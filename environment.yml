@@ -1,0 +1,16 @@
+# Recreate the toolchain with:  conda env create -f environment.yml
+# (creates an env named "pdf-ocr"; then run `conda activate pdf-ocr`)
+name: pdf-ocr
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - tesseract        # OCR engine (system binary + language data)
+  - pip
+  - pip:
+      - pymupdf                 # read scans + write born-digital PDFs
+      - opencv-python-headless  # image cleaning (deskew/whiten/denoise)
+      - pytesseract             # Tesseract Python bindings
+      - requests                # hosted vision-OCR API calls (--engine vision)
+      - pillow
+      - numpy

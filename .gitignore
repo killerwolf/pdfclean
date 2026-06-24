@@ -1,0 +1,15 @@
+# secrets — never commit API keys
+.env
+.env.*
+
+# generated outputs
+output/
+output_vision/
+output*/
+
+# local tooling / caches
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
