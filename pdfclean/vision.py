@@ -34,6 +34,7 @@ class Provider:
     url: str
     model: str
     key_env: str
+    json_mode: bool = True  # send response_format=json_object (free models often choke on it)
 
 
 PROVIDERS = {
@@ -44,12 +45,14 @@ PROVIDERS = {
         model="pixtral-12b-2409",
         key_env="MISTRAL_API_KEY",
     ),
-    # OpenRouter — has free vision models; https://openrouter.ai/keys
+    # OpenRouter — free vision models (rate-limited & slow); https://openrouter.ai/keys
+    # Default is a free vision-language model; see /api/v1/models for the current list.
     "openrouter": Provider(
         name="openrouter",
         url="https://openrouter.ai/api/v1/chat/completions",
-        model="meta-llama/llama-3.2-11b-vision-instruct:free",
+        model="nvidia/nemotron-nano-12b-v2-vl:free",
         key_env="OPENROUTER_API_KEY",
+        json_mode=False,  # OpenRouter free models hang/error on response_format
     ),
 }
 
@@ -59,8 +62,9 @@ class VisionConfig:
     provider: str = "mistral"
     model: str | None = None      # override the provider default
     api_key: str | None = None    # override the env var
-    max_px: int = 1600            # longest page-image edge sent to the model
-    timeout: float = 120.0
+    max_px: int = 1500            # longest page-image edge sent to the model
+    timeout: float = 180.0        # free hosted models are slow
+    retries: int = 3              # transient 429/5xx/timeout are common on free tiers
 
     def resolved(self) -> tuple[Provider, str]:
         if self.provider not in PROVIDERS:
@@ -120,32 +124,56 @@ def _blocks_payload(ocr: OCRResult) -> str:
     return "\n".join(lines)
 
 
-def _call_api(prov: Provider, key: str, model: str, prompt: str, img_b64: str, timeout: float) -> str:
+_TRANSIENT = {408, 409, 429, 500, 502, 503, 504}
+
+
+def _call_api(
+    prov: Provider, key: str, model: str, prompt: str, img_b64: str, timeout: float, retries: int = 3
+) -> str:
+    import time
+
     import requests
+
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if prov.name == "openrouter":  # requested for attribution / rate-limit accounting
+        headers["HTTP-Referer"] = "https://github.com/killerwolf/pdfclean"
+        headers["X-Title"] = "pdfclean"
 
     payload = {
         "model": model,
         "temperature": 0,
-        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
-                    },
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
                 ],
             }
         ],
     }
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    resp = requests.post(prov.url, headers=headers, json=payload, timeout=timeout)
-    if resp.status_code != 200:
-        raise RuntimeError(f"{prov.name} API {resp.status_code}: {resp.text[:300]}")
-    data = resp.json()
-    return data["choices"][0]["message"]["content"]
+    if prov.json_mode:  # only providers that support it (Mistral); free models hang on it
+        payload["response_format"] = {"type": "json_object"}
+
+    last_err = "no attempts made"
+    for attempt in range(retries):
+        try:
+            resp = requests.post(prov.url, headers=headers, json=payload, timeout=timeout)
+        except requests.exceptions.RequestException as exc:  # timeout / connection reset
+            last_err = f"{type(exc).__name__}: {str(exc)[:120]}"
+        else:
+            if resp.status_code == 200:
+                data = resp.json()
+                if "choices" in data:
+                    return data["choices"][0]["message"]["content"]
+                last_err = f"no choices: {json.dumps(data)[:200]}"  # e.g. upstream 504 in body
+            else:
+                last_err = f"API {resp.status_code}: {resp.text[:200]}"
+                if resp.status_code not in _TRANSIENT:
+                    break  # auth/quota error etc. — retrying won't help
+        if attempt < retries - 1:
+            time.sleep(3 * (attempt + 1))  # 3s, 6s backoff (free tiers throttle hard)
+    raise RuntimeError(f"{prov.name} failed after {retries} tries — {last_err}")
 
 
 def _apply(ocr: OCRResult, content: str) -> int:
@@ -203,5 +231,5 @@ def refine_blocks(gray: np.ndarray, ocr: OCRResult, cfg: VisionConfig) -> int:
     model = cfg.model or prov.model
     img_b64 = _encode_image(gray, cfg.max_px)
     prompt = _PROMPT + _blocks_payload(ocr)
-    content = _call_api(prov, key, model, prompt, img_b64, cfg.timeout)
+    content = _call_api(prov, key, model, prompt, img_b64, cfg.timeout, cfg.retries)
     return _apply(ocr, content)

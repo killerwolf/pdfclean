@@ -175,7 +175,17 @@ Or use **OpenRouter**'s free vision models:
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
 python -m pdfclean assets/ -o output/ --engine vision --provider openrouter
+# pick a specific free model (the default may get rate-limited):
+python -m pdfclean assets/ -o output/ --engine vision --provider openrouter \
+  --model nvidia/nemotron-nano-12b-v2-vl:free
 ```
+
+OpenRouter's free vision tier works but is **slow (~30–60 s/page) and heavily
+rate-limited** (shared free pools return 429 / 504). The tool retries transient
+errors and falls back to Tesseract per page if they persist, so a batch always
+finishes. Check the current free list at
+<https://openrouter.ai/api/v1/models> (filter for `:free` + image input) and
+pass it with `--model`. For reliable throughput, Mistral's free tier is steadier.
 
 If a page's API call fails (rate limit, network), that page silently falls back
 to the Tesseract text so the batch still completes.
