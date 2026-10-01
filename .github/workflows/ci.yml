@@ -1,0 +1,70 @@
+# Smoke-tests the pipeline on the bundled sample scan and verifies the output is
+# genuinely born-digital (extractable text, much smaller than the scan).
+#
+# The green check on this workflow is what the README's CI badge points at, so keep
+# the filename stable once the badge references it.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniconda-version: latest
+          auto-activate-base: false
+          activate-environment: pdf-ocr
+          environment-file: environment.yml
+          use-mamba: true
+          condarc-file: |
+            name: base
+            channels:
+              - conda-forge
+            channel_priority: strict
+            default_channels:
+              - conda-forge
+
+      - name: CLI is importable and --help works
+        run: python -m pdfclean --help
+
+      - name: Convert page 1 of the bundled sample
+        run: python -m pdfclean assets/ -o output/ --max-pages 1 --overwrite
+
+      - name: Output exists
+        run: ls -la output/
+
+      - name: Output is born-digital (real extractable text, far smaller than the scan)
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+
+          import pymupdf
+
+          scan_path = glob.glob("assets/*.pdf")[0]
+          out_paths = glob.glob("output/**/*.pdf", recursive=True)
+          assert out_paths, "no output PDF produced"
+
+          out = pymupdf.open(out_paths[0])
+          words = out[0].get_text().split()
+          print(f"words on page 1: {len(words)}")
+          print(f"sample: {' '.join(words[:25])}")
+
+          assert len(words) > 200, f"only {len(words)} words extracted — OCR looks broken"
+
+          # The point of the tool: the page photo is gone, so the output must be
+          # much smaller than the scan it came from.
+          ratio = os.path.getsize(out_paths[0]) / os.path.getsize(scan_path)
+          print(f"size ratio vs input: {ratio:.3f}")
+          assert ratio < 0.6, f"output is {ratio:.0%} of the scan — page image was probably kept"
+          PY
