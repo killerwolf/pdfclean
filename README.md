@@ -155,11 +155,13 @@ conda activate pdf-ocr
 <summary>Conda asks you to accept Anaconda's terms of service</summary>
 
 `environment.yml` only lists `conda-forge`, but conda still consults its
-`defaults` channels (repo.anaconda.com), which now require ToS acceptance. Skip
-them entirely:
+`defaults` channels (repo.anaconda.com), which now require ToS acceptance. Point
+conda at a config that replaces those defaults — nothing else is consulted
+early enough to prevent the prompt:
 
 ```bash
-conda env create -f environment.yml --override-channels -c conda-forge
+printf 'channels:\n  - conda-forge\ndefault_channels:\n  - conda-forge\nchannel_priority: strict\n' > .condarc
+CONDARC=$PWD/.condarc conda env create -f environment.yml
 ```
 </details>
 
@@ -168,8 +170,11 @@ system binary (`brew install tesseract`, `apt install tesseract-ocr`):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install pymupdf opencv-python-headless pytesseract requests pillow numpy
+pip install pymupdf "opencv-python-headless<4.13.0" pytesseract requests pillow numpy
 ```
+
+> The `opencv-python-headless` bound matters on macOS 13 Intel, where the newer
+> releases ship no wheel and pip silently falls back to compiling from source.
 
 ## Usage
 

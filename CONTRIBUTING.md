@@ -22,17 +22,31 @@ Verify the toolchain end to end before changing anything:
 python -m pdfclean assets/ -o output/ --max-pages 1 --overwrite
 ```
 
-> **Note on channels.** `environment.yml` lists `conda-forge`, but conda still
-> consults `defaults` (repo.anaconda.com) unless you override. If `conda env create`
-> stops with `CondaToSNonInteractiveError`, either accept the Anaconda ToS
-> (`conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main`),
-> or skip those channels entirely:
+> **The Anaconda ToS prompt.** `environment.yml` asks for `conda-forge`, but conda
+> still merges the `defaults` channels (repo.anaconda.com) from its own config, and
+> those need their Terms of Service accepted. In a non-interactive shell that aborts
+> with `CondaToSNonInteractiveError`. You have two options:
+>
+> **Accept the terms** — one-off, keeps `defaults` available:
 >
 > ```bash
-> conda env create -f environment.yml --override-channels -c conda-forge
+> conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+> conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 > ```
 >
-> The `--override-channels -c conda-forge` form needs no ToS acceptance.
+> **Or skip those channels entirely**, which needs no ToS acceptance at all. Point
+> conda at a config that replaces `defaults` rather than adding to it:
+>
+> ```bash
+> printf 'channels:\n  - conda-forge\ndefault_channels:\n  - conda-forge\nchannel_priority: strict\n' > .condarc
+> CONDARC=$PWD/.condarc conda env create -f environment.yml
+> ```
+>
+> Two things that do *not* work, despite looking like they should: the `nodefaults`
+> channel entry inside `environment.yml`, and a bare `.condarc` in the working
+> directory. The ToS check runs before either is applied — only the `CONDARC`
+> environment variable is honoured early enough. Note that `conda env create` does
+> not accept `--override-channels` at all (that's `conda create`).
 
 ## Project structure
 

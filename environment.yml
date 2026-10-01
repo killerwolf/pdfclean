@@ -8,9 +8,14 @@ dependencies:
   - tesseract        # OCR engine (system binary + language data)
   - pip
   - pip:
-      - pymupdf                 # read scans + write born-digital PDFs
-      - opencv-python-headless  # image cleaning (deskew/whiten/denoise)
-      - pytesseract             # Tesseract Python bindings
-      - requests                # hosted vision-OCR API calls (--engine vision)
+      - pymupdf                          # read scans + write born-digital PDFs
+      # opencv-python-headless dropped macosx_13_0_x86_64 wheels after 4.12
+      # (5.x is macosx_14_0+ only, and 4.13/4.14 publish only arm64 for 13).
+      # On macOS 13 Intel pip finds no wheel and silently falls back to a very
+      # slow source build via scikit-build that needs Xcode CLT. Bound the
+      # version so every platform resolves to a prebuilt wheel instead.
+      - opencv-python-headless<4.13.0  # image cleaning (deskew/whiten/denoise)
+      - pytesseract                      # Tesseract Python bindings
+      - requests                         # hosted vision-OCR API calls (--engine vision)
       - pillow
       - numpy

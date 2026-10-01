@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `conda env create` no longer stalls for tens of minutes on macOS 13 Intel.
+  Recent `opencv-python-headless` releases publish no `macosx_13_0_x86_64`
+  wheel, so pip fell back to a source build that needs Xcode Command Line
+  Tools. The dependency is now bounded so every supported platform resolves
+  to a prebuilt wheel.
+- The setup instructions for the Anaconda terms-of-service prompt now give a
+  command that actually works. The previously documented
+  `conda env create --override-channels` is not a valid flag for that
+  subcommand, and neither the `nodefaults` channel entry nor a `.condarc` in
+  the working directory prevents the prompt.
+
 ## [0.1.0] - 2026-06-24
 
 ### Added
