@@ -3,6 +3,13 @@
 #
 # The green check on this workflow is what the README's CI badge points at, so keep
 # the filename stable once the badge references it.
+#
+# NOTE: every step below that touches the environment declares
+# `shell: bash -el {0}`. GitHub's default Ubuntu shell is `bash --noprofile
+# --norc`, which never sources the profile that `conda init` writes, so without
+# it `tesseract` and `python` are "command not found" even though the env was
+# created successfully. That is the action's documented requirement, not a
+# quirk.
 
 name: CI
 
@@ -15,6 +22,10 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    # See the note at the top: the login shell is what loads the conda env.
+    defaults:
+      run:
+        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
 
