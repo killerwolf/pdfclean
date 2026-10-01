@@ -1,0 +1,82 @@
+# Smoke-tests the pipeline on the bundled sample scan and verifies the output is
+# genuinely born-digital (extractable text, much smaller than the scan).
+#
+# The green check on this workflow is what the README's CI badge points at, so keep
+# the filename stable once the badge references it.
+#
+# NOTE: every step below that touches the environment declares
+# `shell: bash -el {0}`. GitHub's default Ubuntu shell is `bash --noprofile
+# --norc`, which never sources the profile that `conda init` writes, so without
+# it `tesseract` and `python` are "command not found" even though the env was
+# created successfully. That is the action's documented requirement, not a
+# quirk.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    # See the note at the top: the login shell is what loads the conda env.
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Miniforge, not Miniconda: it ships mamba and only ever points at
+      # conda-forge, so there is no `defaults` channel to ask about and no
+      # Anaconda ToS prompt to abort the run. That is the whole reason this step
+      # is not "setup-miniconda + a condarc".
+      - name: Setup Miniforge
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Miniforge3
+          miniforge-version: latest
+          activate-environment: pdf-ocr
+          environment-file: environment.yml
+          use-mamba: true
+          auto-activate: false
+
+      - name: Tesseract is on PATH
+        run: tesseract --version
+
+      - name: CLI is importable and --help works
+        run: python -m pdfclean --help
+
+      - name: Convert page 1 of the bundled sample
+        run: python -m pdfclean assets/ -o output/ --max-pages 1 --overwrite
+
+      - name: Output exists
+        run: ls -la output/
+
+      - name: Output is born-digital (real extractable text, far smaller than the scan)
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+
+          import pymupdf
+
+          scan_path = glob.glob("assets/*.pdf")[0]
+          out_paths = glob.glob("output/**/*.pdf", recursive=True)
+          assert out_paths, "no output PDF produced"
+
+          out = pymupdf.open(out_paths[0])
+          words = out[0].get_text().split()
+          print(f"words on page 1: {len(words)}")
+          print(f"sample: {' '.join(words[:25])}")
+
+          assert len(words) > 200, f"only {len(words)} words extracted — OCR looks broken"
+
+          # The point of the tool: the page photo is gone, so the output must be
+          # much smaller than the scan it came from.
+          ratio = os.path.getsize(out_paths[0]) / os.path.getsize(scan_path)
+          print(f"size ratio vs input: {ratio:.3f}")
+          assert ratio < 0.6, f"output is {ratio:.0%} of the scan — page image was probably kept"
+          PY
