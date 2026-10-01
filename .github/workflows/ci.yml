@@ -18,21 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Miniconda
+      # Miniforge, not Miniconda: it ships mamba and only ever points at
+      # conda-forge, so there is no `defaults` channel to ask about and no
+      # Anaconda ToS prompt to abort the run. That is the whole reason this step
+      # is not "setup-miniconda + a condarc".
+      - name: Setup Miniforge
         uses: conda-incubator/setup-miniconda@v3
         with:
-          miniconda-version: latest
-          auto-activate-base: false
+          miniforge-variant: Miniforge3
+          miniforge-version: latest
           activate-environment: pdf-ocr
           environment-file: environment.yml
           use-mamba: true
-          condarc-file: |
-            name: base
-            channels:
-              - conda-forge
-            channel_priority: strict
-            default_channels:
-              - conda-forge
+          auto-activate-base: false
+
+      - name: Tesseract is on PATH
+        run: tesseract --version
 
       - name: CLI is importable and --help works
         run: python -m pdfclean --help
